@@ -226,24 +226,10 @@ app.post("/admin/login", (req, res) => {
 });
 
 /*********************************
- * SERVER START
+ * SERVER START (IMPORTANT)
  *********************************/
-// const PORT = process.env.PORT || 3000;
-
-// app.listen(PORT, () => {
-//   console.log("✅ Backend running on port " + PORT);
-// });
-
-
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("Backend running on port " + PORT);
+app.listen(PORT, () => {
+  console.log("✅ Backend running on port " + PORT);
 });
-
-
-app.listen(3000, "0.0.0.0", () => {
-  console.log("Backend running on all devices");
-});
-
-
