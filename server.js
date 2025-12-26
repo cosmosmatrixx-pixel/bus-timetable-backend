@@ -5,7 +5,6 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const nodemailer = require("nodemailer");
 const sqlite3 = require("sqlite3").verbose();
 const multer = require("multer");
 const csv = require("csv-parser");
@@ -45,29 +44,10 @@ db.serialize(() => {
   `);
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS routes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      bus TEXT
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS stations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      route_id INTEGER,
-      name TEXT,
-      time TEXT
-    )
-  `);
-
-  db.run(`
     CREATE TABLE IF NOT EXISTS admins (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE,
-      password TEXT,
-      email TEXT,
-      otp TEXT,
-      otp_expiry INTEGER
+      password TEXT
     )
   `);
 });
@@ -80,8 +60,8 @@ const defaultPassword = bcrypt.hashSync("1234", 10);
 db.get("SELECT * FROM admins WHERE username='admin'", (err, row) => {
   if (!row) {
     db.run(
-      "INSERT INTO admins (username, password, email) VALUES (?, ?, ?)",
-      ["admin", defaultPassword, "cosmosmatrixx@gmail.com"]
+      "INSERT INTO admins (username, password) VALUES (?, ?)",
+      ["admin", defaultPassword]
     );
     console.log("✅ Default admin created (admin / 1234)");
   }
@@ -92,128 +72,17 @@ db.get("SELECT * FROM admins WHERE username='admin'", (err, row) => {
  *********************************/
 const JWT_SECRET = process.env.JWT_SECRET || "mySuperSecretKey123";
 
-function verifyAdminToken(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ message: "No token" });
+function verifyAdmin(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ message: "No token" });
 
-  const token = authHeader.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "Invalid token" });
-
+  const token = auth.split(" ")[1];
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) return res.status(401).json({ message: "Token expired" });
+    if (err) return res.status(401).json({ message: "Invalid token" });
     req.admin = decoded;
     next();
   });
 }
-
-/*********************************
- * EMAIL (OTP)
- *********************************/
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  auth: {
-    user: "cosmosmatrixx@gmail.com",
-    pass: "pqeedsmikpffqfgs"
-  }
-});
-
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-/*********************************
- * CSV IMPORT (BUSES)
- *********************************/
-app.post(
-  "/admin/import-buses",
-  verifyAdminToken,
-  upload.single("file"),
-  (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
-    }
-
-    const buses = [];
-
-    fs.createReadStream(req.file.path)
-      .pipe(csv())
-      .on("data", (row) => buses.push(row))
-      .on("end", () => {
-        buses.forEach((bus) => {
-          db.run(
-            `INSERT INTO buses 
-             (bus_number, route_from, route_to, departure_time, arrival_time, depot)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              bus.bus_number,
-              bus.from,
-              bus.to,
-              bus.departure,
-              bus.arrival,
-              bus.depot,
-            ]
-          );
-        });
-
-        res.json({ success: true, inserted: buses.length });
-      });
-  }
-);
-
-
-/*********************************
- * GET ALL ROUTES (ADMIN)
- *********************************/
-app.get("/admin/routes", verifyAdminToken, (req, res) => {
-  db.all("SELECT * FROM routes", [], (err, rows) => {
-    if (err) {
-      return res.status(500).json([]);
-    }
-    res.json(rows);
-  });
-});
-
-
-
-/*********************************
- * SEARCH API
- *********************************/
-app.get("/search", (req, res) => {
-  const from = req.query.from?.toLowerCase();
-  const to = req.query.to?.toLowerCase();
-
-  if (!from || !to) return res.json([]);
-
-  db.all("SELECT * FROM routes", [], (err, routes) => {
-    if (err || routes.length === 0) return res.json([]);
-
-    let result = [];
-    let pending = routes.length;
-
-    routes.forEach((route) => {
-      db.all(
-        "SELECT name, time FROM stations WHERE route_id=? ORDER BY id",
-        [route.id],
-        (err, stations) => {
-          pending--;
-
-          const names = stations.map((s) => s.name.toLowerCase());
-          if (
-            names.includes(from) &&
-            names.includes(to) &&
-            names.indexOf(from) < names.indexOf(to)
-          ) {
-            result.push({ bus: route.bus, stations });
-          }
-
-          if (pending === 0) res.json(result);
-        }
-      );
-    });
-  });
-});
 
 /*********************************
  * ADMIN LOGIN
@@ -226,7 +95,7 @@ app.post("/admin/login", (req, res) => {
     [username],
     (err, admin) => {
       if (!admin || !bcrypt.compareSync(password, admin.password)) {
-        return res.json({ success: false, message: "Invalid credentials" });
+        return res.json({ success: false });
       }
 
       const token = jwt.sign(
@@ -241,10 +110,61 @@ app.post("/admin/login", (req, res) => {
 });
 
 /*********************************
- * SERVER START (IMPORTANT)
+ * CSV IMPORT (BUSES)
+ *********************************/
+app.post(
+  "/admin/import-buses",
+  verifyAdmin,
+  upload.single("file"),
+  (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const rows = [];
+
+    fs.createReadStream(req.file.path)
+      .pipe(csv())
+      .on("data", (row) => {
+        if (!row.bus_number) return; // skip empty rows
+        rows.push(row);
+      })
+      .on("end", () => {
+        rows.forEach((b) => {
+          db.run(
+            `INSERT INTO buses
+            (bus_number, route_from, route_to, departure_time, arrival_time, depot)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              b.bus_number,
+              b.from,
+              b.to,
+              b.departure,
+              b.arrival,
+              b.depot
+            ]
+          );
+        });
+
+        res.json({ success: true, inserted: rows.length });
+      });
+  }
+);
+
+/*********************************
+ * GET ALL UPLOADED BUSES (ADMIN)
+ *********************************/
+app.get("/admin/buses", verifyAdmin, (req, res) => {
+  db.all("SELECT * FROM buses ORDER BY id DESC", [], (err, rows) => {
+    if (err) return res.json([]);
+    res.json(rows);
+  });
+});
+
+/*********************************
+ * SERVER START
  *********************************/
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
   console.log("✅ Backend running on port " + PORT);
 });
