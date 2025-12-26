@@ -162,6 +162,21 @@ app.post(
   }
 );
 
+
+/*********************************
+ * GET ALL ROUTES (ADMIN)
+ *********************************/
+app.get("/admin/routes", verifyAdminToken, (req, res) => {
+  db.all("SELECT * FROM routes", [], (err, rows) => {
+    if (err) {
+      return res.status(500).json([]);
+    }
+    res.json(rows);
+  });
+});
+
+
+
 /*********************************
  * SEARCH API
  *********************************/
