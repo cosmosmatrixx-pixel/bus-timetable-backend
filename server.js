@@ -362,40 +362,50 @@ app.post("/admin/change-password", verifyAdminToken, (req, res) => {
    ========================= */
 app.post("/admin/forgot-password", (req, res) => {
   const { email } = req.body;
-  if (!email) return res.json({ message: "Email is required" });
 
-  db.get("SELECT * FROM admins WHERE email = ?", [email], (err, admin) => {
-    if (!admin) {
-      return res.json({ message: "If email exists, OTP will be sent" });
-    }
+  if (!email) {
+    return res.json({ message: "Email is required" });
+  }
 
-    const otp = generateOTP();
-    const expiry = Date.now() + 10 * 60 * 1000;
+  db.get(
+    "SELECT * FROM admins WHERE email = ?",
+    [email],
+    (err, admin) => {
 
-    db.run(
-      "UPDATE admins SET otp=?, otp_expiry=? WHERE id=?",
-      [otp, expiry, admin.id],
-      () => {
+      // ✅ Always respond immediately (UI never blocks)
+      res.json({ message: "If email exists, OTP will be sent shortly" });
 
-        // ✅ respond immediately
-        res.json({ message: "If email exists, OTP will be sent shortly" });
-
-        // 🔄 background email
-        transporter.sendMail(
-          {
-            from: process.env.MAIL_FROM,
-            to: email,
-            subject: "HR Route - Password Reset OTP",
-            text: `Your OTP is ${otp}. Valid for 10 minutes.`
-          },
-          err => {
-            if (err) console.error("❌ Email failed:", err);
-            else console.log("✅ OTP sent");
-          }
-        );
+      if (err || !admin) {
+        return; // security: don't reveal email existence
       }
-    );
-  });
+
+      const otp = generateOTP();
+      const expiry = Date.now() + 10 * 60 * 1000;
+
+      db.run(
+        "UPDATE admins SET otp=?, otp_expiry=? WHERE id=?",
+        [otp, expiry, admin.id],
+        () => {
+          // 🔄 Send email in background
+          transporter.sendMail(
+            {
+              from: process.env.MAIL_FROM,
+              to: email,
+              subject: "HR Route - Password Reset OTP",
+              text: `Your OTP is ${otp}. Valid for 10 minutes.`
+            },
+            (err) => {
+              if (err) {
+                console.error("❌ Email send failed:", err);
+              } else {
+                console.log("✅ OTP email sent");
+              }
+            }
+          );
+        }
+      );
+    }
+  );
 });
 
 
