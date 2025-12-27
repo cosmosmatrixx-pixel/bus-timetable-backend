@@ -1,10 +1,3 @@
-transporter.verify((err, success) => {
-  if (err) {
-    console.error("❌ SMTP connection failed:", err);
-  } else {
-    console.log("✅ SMTP server is ready");
-  }
-});
 
 
 
@@ -40,6 +33,15 @@ const transporter = nodemailer.createTransport({
   auth: {
     user: process.env.SMTP_USER,   // MUST be 'apikey'
     pass: process.env.SMTP_PASS
+  }
+});
+
+
+transporter.verify((err, success) => {
+  if (err) {
+    console.error("❌ SMTP connection failed:", err);
+  } else {
+    console.log("✅ SMTP server is ready");
   }
 });
 
