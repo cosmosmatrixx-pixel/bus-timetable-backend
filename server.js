@@ -324,6 +324,87 @@ app.post("/admin/change-password", verifyAdminToken, (req, res) => {
     }
   );
 });
+
+
+
+/* =========================
+   FORGOT PASSWORD
+   ========================= */
+app.post("/admin/forgot-password", (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.json({ message: "Email is required" });
+  }
+
+  db.get(
+    "SELECT * FROM admins WHERE email = ?",
+    [email],
+    (err, admin) => {
+      if (!admin) {
+        return res.json({ message: "Email not registered" });
+      }
+
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiry = Date.now() + 10 * 60 * 1000;
+
+      db.run(
+        "UPDATE admins SET otp = ?, otp_expiry = ? WHERE id = ?",
+        [otp, expiry, admin.id],
+        err => {
+          if (err) {
+            return res.json({ message: "OTP save failed" });
+          }
+
+          transporter.sendMail({
+            from: "cosmosmatrixx@gmail.com",
+            to: email,
+            subject: "HR Route - Password Reset OTP",
+            text: `Your OTP is ${otp}. Valid for 10 minutes.`
+          });
+
+          res.json({ message: "OTP sent to email" });
+        }
+      );
+    }
+  );
+});
+
+/* =========================
+   RESET PASSWORD
+   ========================= */
+app.post("/admin/reset-password", (req, res) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !otp || !newPassword) {
+    return res.json({ message: "All fields required" });
+  }
+
+  db.get(
+    "SELECT * FROM admins WHERE email = ?",
+    [email],
+    (err, admin) => {
+      if (!admin) return res.json({ message: "Invalid email" });
+
+      if (admin.otp !== otp) {
+        return res.json({ message: "Invalid OTP" });
+      }
+
+      if (Date.now() > admin.otp_expiry) {
+        return res.json({ message: "OTP expired" });
+      }
+
+      const hash = bcrypt.hashSync(newPassword, 10);
+
+      db.run(
+        "UPDATE admins SET password = ?, otp = NULL, otp_expiry = NULL WHERE id = ?",
+        [hash, admin.id],
+        () => res.json({ message: "Password reset successful" })
+      );
+    }
+  );
+});
+
 /* =========================
    Server start (ONLY ONE)
    ========================= */
