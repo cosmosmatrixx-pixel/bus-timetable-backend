@@ -1,3 +1,10 @@
+transporter.verify((err, success) => {
+  if (err) {
+    console.error("❌ SMTP connection failed:", err);
+  } else {
+    console.log("✅ SMTP server is ready");
+  }
+});
 
 
 
@@ -27,14 +34,15 @@ app.use(express.json());
    Email setup
    ========================= */
 const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com",
-  port: 587,
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT),
   secure: false,
   auth: {
-    user: process.env.BREVO_EMAIL,
-    pass: process.env.BREVO_SMTP_KEY
+    user: process.env.SMTP_USER,   // MUST be 'apikey'
+    pass: process.env.SMTP_PASS
   }
 });
+
 
 
 
@@ -373,18 +381,18 @@ app.post("/admin/forgot-password", (req, res) => {
 
 transporter.sendMail(
   {
-    from: "HR Route <cosmosmatrixx@gmail.com>",
+    from: process.env.MAIL_FROM,
     to: email,
     subject: "HR Route - Password Reset OTP",
-    text: `Your OTP is ${otp}. Valid for 10 minutes.`
+    text: `Your OTP is ${otp}. It is valid for 10 minutes.`
   },
-  (mailErr, info) => {
-    if (mailErr) {
-      console.error("❌ Email error:", mailErr);
+  (err, info) => {
+    if (err) {
+      console.error("❌ Email send failed:", err);
       return res.json({ message: "Email sending failed" });
     }
 
-    console.log("✅ Email sent:", info.response);
+    console.log("✅ OTP email sent:", info.response);
     res.json({ message: "OTP sent to email" });
             }
           );
