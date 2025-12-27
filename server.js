@@ -26,15 +26,26 @@ app.use(express.json());
 /* =========================
    Email setup
    ========================= */
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,   // MUST be 'apikey'
-    pass: process.env.SMTP_PASS
+// 1️⃣ UI को तुरंत response भेजो
+res.json({ message: "If email exists, OTP will be sent shortly" });
+
+// 2️⃣ Email background में भेजो
+transporter.sendMail(
+  {
+    from: process.env.MAIL_FROM,
+    to: email,
+    subject: "HR Route - Password Reset OTP",
+    text: `Your OTP is ${otp}. It is valid for 10 minutes.`
+  },
+  (err) => {
+    if (err) {
+      console.error("❌ Email send failed:", err);
+    } else {
+      console.log("✅ OTP email sent");
+    }
   }
-});
+);
+
 
 
 transporter.verify((err, success) => {
@@ -351,57 +362,40 @@ app.post("/admin/change-password", verifyAdminToken, (req, res) => {
    ========================= */
 app.post("/admin/forgot-password", (req, res) => {
   const { email } = req.body;
+  if (!email) return res.json({ message: "Email is required" });
 
-  if (!email) {
-    return res.json({ message: "Email is required" });
-  }
+  db.get("SELECT * FROM admins WHERE email = ?", [email], (err, admin) => {
+    if (!admin) {
+      return res.json({ message: "If email exists, OTP will be sent" });
+    }
 
-  db.get(
-    "SELECT * FROM admins WHERE email = ?",
-    [email],
-    (err, admin) => {
-      if (err) {
-        console.error("❌ DB error:", err);
-        return res.json({ message: "Server error" });
-      }
+    const otp = generateOTP();
+    const expiry = Date.now() + 10 * 60 * 1000;
 
-      if (!admin) {
-        return res.json({ message: "Email not registered" });
-      }
+    db.run(
+      "UPDATE admins SET otp=?, otp_expiry=? WHERE id=?",
+      [otp, expiry, admin.id],
+      () => {
 
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiry = Date.now() + 10 * 60 * 1000;
+        // ✅ respond immediately
+        res.json({ message: "If email exists, OTP will be sent shortly" });
 
-      db.run(
-        "UPDATE admins SET otp = ?, otp_expiry = ? WHERE id = ?",
-        [otp, expiry, admin.id],
-        err => {
-          if (err) {
-            console.error("❌ OTP save error:", err);
-            return res.json({ message: "OTP save failed" });
+        // 🔄 background email
+        transporter.sendMail(
+          {
+            from: process.env.MAIL_FROM,
+            to: email,
+            subject: "HR Route - Password Reset OTP",
+            text: `Your OTP is ${otp}. Valid for 10 minutes.`
+          },
+          err => {
+            if (err) console.error("❌ Email failed:", err);
+            else console.log("✅ OTP sent");
           }
-
-transporter.sendMail(
-  {
-    from: process.env.MAIL_FROM,
-    to: email,
-    subject: "HR Route - Password Reset OTP",
-    text: `Your OTP is ${otp}. It is valid for 10 minutes.`
-  },
-  (err, info) => {
-    if (err) {
-      console.error("❌ Email send failed:", err);
-      return res.json({ message: "Email sending failed" });
-    }
-
-    console.log("✅ OTP email sent:", info.response);
-    res.json({ message: "OTP sent to email" });
-            }
-          );
-        }
-      );
-    }
-  );
+        );
+      }
+    );
+  });
 });
 
 
