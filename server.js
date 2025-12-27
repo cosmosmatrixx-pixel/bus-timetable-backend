@@ -1,3 +1,6 @@
+require("dotenv").config();
+
+
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -28,10 +31,11 @@ const transporter = nodemailer.createTransport({
   port: 587,
   secure: false,
   auth: {
-    user: "9ed828001@smtp-brevo.com",
-    pass: "xsmtpsib-d288ef0127a38687fd20865491713af700117bb91a7e13ccdd37c7f02acba1de-bYg6IxLTF84KYJpP"
+    user: process.env.BREVO_EMAIL,
+    pass: process.env.BREVO_SMTP_KEY
   }
 });
+
 
 
 
