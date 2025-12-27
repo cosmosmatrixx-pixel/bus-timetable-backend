@@ -10,12 +10,13 @@ const cors = require("cors");
 const sqlite3 = require("sqlite3").verbose();
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const nodemailer = require("nodemailer");
 
 const app = express();
 const db = new sqlite3.Database("./bus.db");
 
 const JWT_SECRET = "mySuperSecretKey123";
+const axios = require("axios");
+
 
 /* =========================
    Middleware
@@ -27,23 +28,6 @@ app.use(express.json());
    Email setup
    ========================= */
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  }
-});
-
-transporter.verify((err) => {
-  if (err) {
-    console.error("❌ SMTP connection failed:", err);
-  } else {
-    console.log("✅ SMTP server is ready");
-  }
-});
 
 
 
@@ -349,46 +333,57 @@ app.post("/admin/change-password", verifyAdminToken, (req, res) => {
 /* =========================
    FORGOT PASSWORD (WITH ERROR LOGGING)
    ========================= */
-app.post("/admin/forgot-password", (req, res) => {
+app.post("/admin/forgot-password", async (req, res) => {
   const { email } = req.body;
 
-  if (!email) {
-    return res.json({ message: "Email is required" });
-  }
-
-  // ✅ UI को तुरंत जवाब
+  // 🔐 Security response (UI never blocks)
   res.json({ message: "If email exists, OTP will be sent shortly" });
+
+  if (!email) return;
 
   db.get(
     "SELECT * FROM admins WHERE email = ?",
     [email],
-    (err, admin) => {
+    async (err, admin) => {
       if (err || !admin) return;
 
       const otp = generateOTP();
       const expiry = Date.now() + 10 * 60 * 1000;
 
       db.run(
-        "UPDATE admins SET otp=?, otp_expiry=? WHERE id=?",
-        [otp, expiry, admin.id],
-        () => {
-          transporter.sendMail(
-            {
-              from: process.env.MAIL_FROM,
-              to: email,
-              subject: "HR Route - Password Reset OTP",
-              text: `Your OTP is ${otp}. Valid for 10 minutes.`
-            },
-            (err) => {
-              if (err) {
-                console.error("❌ Email send failed:", err);
-              } else {
-                console.log("✅ OTP email sent");
-              }
-            }
-          );
-        }
+        "UPDATE admins SET otp = ?, otp_expiry = ? WHERE id = ?",
+        [otp, expiry, admin.id]
       );
+
+      try {
+        await axios.post(
+          "https://api.brevo.com/v3/smtp/email",
+          {
+            sender: {
+              name: "HR Route",
+              email: "cosmosmatrixx@gmail.com"
+            },
+            to: [{ email }],
+            subject: "HR Route – Password Reset OTP",
+            htmlContent: `
+              <h2>Password Reset OTP</h2>
+              <p>Your OTP is:</p>
+              <h1>${otp}</h1>
+              <p>This OTP is valid for 10 minutes.</p>
+            `
+          },
+          {
+            headers: {
+              "api-key": process.env.BREVO_API_KEY,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+
+        console.log("✅ OTP email sent via Brevo API");
+      } catch (e) {
+        console.error("❌ Brevo API error:", e.response?.data || e.message);
+      }
     }
   );
 });
