@@ -144,21 +144,33 @@ app.get("/search", (req, res) => {
 /* =========================
    ⭐ STATIONS API (FIXED)
    ========================= */
+/* =========================
+   STATIONS API (100% SAFE)
+   ========================= */
 app.get("/stations", (req, res) => {
   db.all(
     "SELECT DISTINCT name FROM stations ORDER BY name",
     [],
     (err, rows) => {
+
       if (err) {
-        console.error("❌ Stations error:", err);
-        return res.status(500).json([]);
+        console.error("❌ SQLite error:", err);
+        return res.json([]);   // ❌ NEVER return 500
       }
 
-      const names = rows.map(r => r.name);
+      if (!Array.isArray(rows)) {
+        return res.json([]);
+      }
+
+      const names = rows
+        .map(r => r.name)
+        .filter(Boolean);   // remove null / empty
+
       res.json(names);
     }
   );
 });
+
 
 /* =========================
    ADMIN APIs
