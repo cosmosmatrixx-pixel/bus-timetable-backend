@@ -26,29 +26,18 @@ app.use(express.json());
 /* =========================
    Email setup
    ========================= */
-// 1️⃣ UI को तुरंत response भेजो
-res.json({ message: "If email exists, OTP will be sent shortly" });
 
-// 2️⃣ Email background में भेजो
-transporter.sendMail(
-  {
-    from: process.env.MAIL_FROM,
-    to: email,
-    subject: "HR Route - Password Reset OTP",
-    text: `Your OTP is ${otp}. It is valid for 10 minutes.`
-  },
-  (err) => {
-    if (err) {
-      console.error("❌ Email send failed:", err);
-    } else {
-      console.log("✅ OTP email sent");
-    }
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT),
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
   }
-);
+});
 
-
-
-transporter.verify((err, success) => {
+transporter.verify((err) => {
   if (err) {
     console.error("❌ SMTP connection failed:", err);
   } else {
@@ -367,17 +356,14 @@ app.post("/admin/forgot-password", (req, res) => {
     return res.json({ message: "Email is required" });
   }
 
+  // ✅ UI को तुरंत जवाब
+  res.json({ message: "If email exists, OTP will be sent shortly" });
+
   db.get(
     "SELECT * FROM admins WHERE email = ?",
     [email],
     (err, admin) => {
-
-      // ✅ Always respond immediately (UI never blocks)
-      res.json({ message: "If email exists, OTP will be sent shortly" });
-
-      if (err || !admin) {
-        return; // security: don't reveal email existence
-      }
+      if (err || !admin) return;
 
       const otp = generateOTP();
       const expiry = Date.now() + 10 * 60 * 1000;
@@ -386,7 +372,6 @@ app.post("/admin/forgot-password", (req, res) => {
         "UPDATE admins SET otp=?, otp_expiry=? WHERE id=?",
         [otp, expiry, admin.id],
         () => {
-          // 🔄 Send email in background
           transporter.sendMail(
             {
               from: process.env.MAIL_FROM,
