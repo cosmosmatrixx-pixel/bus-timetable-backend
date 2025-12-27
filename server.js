@@ -523,16 +523,24 @@ app.post("/admin/reset-password", (req, res) => {
 // GET all unique stations
 app.get("/stations", async (req, res) => {
   try {
-    const routes = await Route.find({}, "stations.name");
+    const routes = await Route.find({});
 
     const stationSet = new Set();
 
     routes.forEach(route => {
-      route.stations.forEach(s => stationSet.add(s.name));
+      if (Array.isArray(route.stations)) {
+        route.stations.forEach(s => {
+          if (s && s.name) {
+            stationSet.add(s.name.trim());
+          }
+        });
+      }
     });
 
-    res.json([...stationSet].sort());
+    res.json(Array.from(stationSet).sort());
+
   } catch (err) {
+    console.error("Stations API error:", err);
     res.status(500).json({ error: "Failed to fetch stations" });
   }
 });
