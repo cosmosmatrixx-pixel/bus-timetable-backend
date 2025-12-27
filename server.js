@@ -24,12 +24,10 @@ app.use(express.json());
    Email setup
    ========================= */
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  service: "gmail",
   auth: {
     user: "cosmosmatrixx@gmail.com",
-    pass: "pqeedsmikpffqfgs"
+    pass: "dtztrxklrmweokcr"
   }
 });
 
@@ -330,6 +328,9 @@ app.post("/admin/change-password", verifyAdminToken, (req, res) => {
 /* =========================
    FORGOT PASSWORD
    ========================= */
+/* =========================
+   FORGOT PASSWORD (WITH ERROR LOGGING)
+   ========================= */
 app.post("/admin/forgot-password", (req, res) => {
   const { email } = req.body;
 
@@ -341,6 +342,11 @@ app.post("/admin/forgot-password", (req, res) => {
     "SELECT * FROM admins WHERE email = ?",
     [email],
     (err, admin) => {
+      if (err) {
+        console.error("❌ DB error:", err);
+        return res.json({ message: "Server error" });
+      }
+
       if (!admin) {
         return res.json({ message: "Email not registered" });
       }
@@ -353,22 +359,33 @@ app.post("/admin/forgot-password", (req, res) => {
         [otp, expiry, admin.id],
         err => {
           if (err) {
+            console.error("❌ OTP save error:", err);
             return res.json({ message: "OTP save failed" });
           }
 
-          transporter.sendMail({
-            from: "cosmosmatrixx@gmail.com",
-            to: email,
-            subject: "HR Route - Password Reset OTP",
-            text: `Your OTP is ${otp}. Valid for 10 minutes.`
-          });
+          transporter.sendMail(
+            {
+              from: "HR Route <cosmosmatrixx@gmail.com>",
+              to: email,
+              subject: "HR Route - Password Reset OTP",
+              text: `Your OTP is ${otp}. Valid for 10 minutes.`
+            },
+            (mailErr, info) => {
+              if (mailErr) {
+                console.error("❌ Email send error:", mailErr);
+                return res.json({ message: "Email sending failed" });
+              }
 
-          res.json({ message: "OTP sent to email" });
+              console.log("✅ Email sent:", info.response);
+              res.json({ message: "OTP sent to email" });
+            }
+          );
         }
       );
     }
   );
 });
+
 
 /* =========================
    RESET PASSWORD
