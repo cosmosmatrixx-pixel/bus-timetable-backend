@@ -520,6 +520,25 @@ app.post("/admin/reset-password", (req, res) => {
 
 
 
+// GET all unique stations
+app.get("/stations", async (req, res) => {
+  try {
+    const routes = await Route.find({}, "stations.name");
+
+    const stationSet = new Set();
+
+    routes.forEach(route => {
+      route.stations.forEach(s => stationSet.add(s.name));
+    });
+
+    res.json([...stationSet].sort());
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch stations" });
+  }
+});
+
+
+
 // Server start
 // app.listen(3000, () => {
 //   console.log("Backend running on http://localhost:3000");
