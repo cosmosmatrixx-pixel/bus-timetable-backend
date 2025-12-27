@@ -200,6 +200,130 @@ app.post("/admin/login", (req, res) => {
   );
 });
 
+
+
+
+
+// Get all routes
+app.get("/admin/routes", verifyAdminToken, (req, res) => {
+  db.all("SELECT * FROM routes", [], (err, rows) => {
+    if (err) return res.json([]);
+    res.json(rows);
+  });
+});
+
+// Get single route
+app.get("/admin/route/:id", verifyAdminToken, (req, res) => {
+  const id = req.params.id;
+
+  db.get("SELECT * FROM routes WHERE id = ?", [id], (err, route) => {
+    if (!route) return res.json(null);
+
+    db.all(
+      "SELECT name, time FROM stations WHERE route_id = ? ORDER BY id",
+      [id],
+      (err, stations) => {
+        res.json({
+          id: route.id,
+          bus: route.bus,
+          stations
+        });
+      }
+    );
+  });
+});
+
+// Add route
+app.post("/admin/add-route", verifyAdminToken, (req, res) => {
+  const { bus, stations } = req.body;
+
+  if (!bus || !stations || stations.length < 2) {
+    return res.json({ message: "Invalid data" });
+  }
+
+  db.run(
+    "INSERT INTO routes (bus) VALUES (?)",
+    [bus],
+    function (err) {
+      if (err) return res.json({ message: "DB error" });
+
+      const routeId = this.lastID;
+      const stmt = db.prepare(
+        "INSERT INTO stations (route_id, name, time) VALUES (?, ?, ?)"
+      );
+
+      stations.forEach(s => {
+        stmt.run(routeId, s.name, s.time);
+      });
+
+      stmt.finalize();
+      res.json({ message: "Route added" });
+    }
+  );
+});
+
+// Update route
+app.put("/admin/update-route/:id", verifyAdminToken, (req, res) => {
+  const { bus, stations } = req.body;
+  const id = req.params.id;
+
+  if (!bus || !stations || stations.length < 2) {
+    return res.json({ message: "Invalid data" });
+  }
+
+  db.run(
+    "UPDATE routes SET bus = ? WHERE id = ?",
+    [bus, id],
+    () => {
+      db.run("DELETE FROM stations WHERE route_id = ?", [id], () => {
+        const stmt = db.prepare(
+          "INSERT INTO stations (route_id, name, time) VALUES (?, ?, ?)"
+        );
+
+        stations.forEach(s => {
+          stmt.run(id, s.name, s.time);
+        });
+
+        stmt.finalize();
+        res.json({ message: "Route updated" });
+      });
+    }
+  );
+});
+
+// Delete route
+app.delete("/admin/delete-route/:id", verifyAdminToken, (req, res) => {
+  const id = req.params.id;
+
+  db.run("DELETE FROM stations WHERE route_id = ?", [id], () => {
+    db.run("DELETE FROM routes WHERE id = ?", [id], () => {
+      res.json({ message: "Route deleted" });
+    });
+  });
+});
+
+// Change password
+app.post("/admin/change-password", verifyAdminToken, (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  db.get(
+    "SELECT * FROM admins WHERE id = ?",
+    [req.admin.adminId],
+    (err, admin) => {
+      if (!admin) return res.json({ message: "Admin not found" });
+
+      const ok = bcrypt.compareSync(oldPassword, admin.password);
+      if (!ok) return res.json({ message: "Old password incorrect" });
+
+      const hash = bcrypt.hashSync(newPassword, 10);
+      db.run(
+        "UPDATE admins SET password = ? WHERE id = ?",
+        [hash, admin.id],
+        () => res.json({ message: "Password changed successfully" })
+      );
+    }
+  );
+});
 /* =========================
    Server start (ONLY ONE)
    ========================= */
