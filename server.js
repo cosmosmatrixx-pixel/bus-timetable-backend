@@ -336,7 +336,7 @@ app.post("/admin/change-password", verifyAdminToken, (req, res) => {
 app.post("/admin/forgot-password", async (req, res) => {
   const { email } = req.body;
 
-  // ✅ UI को तुरंत response
+  // UI को तुरंत response (security + UX)
   res.json({ message: "If email exists, OTP will be sent shortly" });
 
   if (!email) return;
@@ -361,7 +361,7 @@ app.post("/admin/forgot-password", async (req, res) => {
           {
             sender: {
               name: "HR Route",
-              email: "cosmosmatrixx@gmail.com" // ✔ verified sender
+              email: "cosmosmatrixx@gmail.com" // MUST be verified
             },
             to: [{ email }],
             subject: "HR Route – Password Reset OTP",
@@ -374,7 +374,7 @@ app.post("/admin/forgot-password", async (req, res) => {
           },
           {
             headers: {
-              "api-key": process.env.BREVO_API_KEY, // 🔥 MOST IMPORTANT
+              "api-key": process.env.BREVO_API_KEY,
               "Content-Type": "application/json"
             }
           }
@@ -382,15 +382,11 @@ app.post("/admin/forgot-password", async (req, res) => {
 
         console.log("✅ OTP email sent via Brevo API");
       } catch (e) {
-        console.error(
-          "❌ Brevo API error:",
-          e.response?.data || e.message
-        );
+        console.error("❌ Brevo API error:", e.response?.data || e.message);
       }
     }
   );
 });
-
 
 /* =========================
    RESET PASSWORD
