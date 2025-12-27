@@ -24,12 +24,16 @@ app.use(express.json());
    Email setup
    ========================= */
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp-relay.brevo.com",
+  port: 587,
+  secure: false,
   auth: {
-    user: "cosmosmatrixx@gmail.com",
-    pass: "dtztrxklrmweokcr"
+    user: "9ed828001@smtp-brevo.com",
+    pass: "xsmtpsib-d288ef0127a38687fd20865491713af700117bb91a7e13ccdd37c7f02acba1de-bYg6IxLTF84KYJpP"
   }
 });
+
+
 
 /* =========================
    Auth middleware
@@ -363,21 +367,21 @@ app.post("/admin/forgot-password", (req, res) => {
             return res.json({ message: "OTP save failed" });
           }
 
-          transporter.sendMail(
-            {
-              from: "HR Route <cosmosmatrixx@gmail.com>",
-              to: email,
-              subject: "HR Route - Password Reset OTP",
-              text: `Your OTP is ${otp}. Valid for 10 minutes.`
-            },
-            (mailErr, info) => {
-              if (mailErr) {
-                console.error("❌ Email send error:", mailErr);
-                return res.json({ message: "Email sending failed" });
-              }
+transporter.sendMail(
+  {
+    from: "HR Route <cosmosmatrixx@gmail.com>",
+    to: email,
+    subject: "HR Route - Password Reset OTP",
+    text: `Your OTP is ${otp}. Valid for 10 minutes.`
+  },
+  (mailErr, info) => {
+    if (mailErr) {
+      console.error("❌ Email error:", mailErr);
+      return res.json({ message: "Email sending failed" });
+    }
 
-              console.log("✅ Email sent:", info.response);
-              res.json({ message: "OTP sent to email" });
+    console.log("✅ Email sent:", info.response);
+    res.json({ message: "OTP sent to email" });
             }
           );
         }
